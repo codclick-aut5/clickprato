@@ -37,7 +37,7 @@ export async function signUp(
 
     try {
       const response = await fetch(
-        "https://n8n-n8n-start.yh11mi.easypanel.host/webhook/signup",
+        "https://n8n-n8n-start.yh11mi.easypanel.host/webhook/clickprato_bestburger_signup",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
