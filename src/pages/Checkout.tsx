@@ -1,0 +1,839 @@
+//checkout.tsx
+import React, { useState, useEffect, useRef } from "react";
+import { useCart } from "@/contexts/CartContext";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { createOrder } from "@/services/orderService";
+import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
+import { fetchAddressByCep } from "@/services/cepService";
+import { saveCustomerData, getCustomerByPhone } from "@/services/customerService";
+import { calculateFreteByCep } from "@/services/freteService";
+import { supabase } from "@/integrations/supabase/client";
+import { Trash2 } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
+
+const Checkout = () => {
+  const { cartItems, cartTotal, clearCart, removeFromCart, appliedCoupon, discountAmount, finalTotal } = useCart();
+  const { currentUser } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [cep, setCep] = useState("");
+  const [street, setStreet] = useState("");
+  const [number, setNumber] = useState("");
+  const [complement, setComplement] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "cash">("card");
+  const [observations, setObservations] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [cepLoading, setCepLoading] = useState(false);
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [valorFrete, setValorFrete] = useState<number>(0);
+  const [distanciaKm, setDistanciaKm] = useState<number | null>(null);
+  const [freteError, setFreteError] = useState<string | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  
+  const numberInputRef = useRef<HTMLInputElement>(null);
+
+  // Preencher dados automaticamente se o usuário estiver logado
+  useEffect(() => {
+    const loadUserData = async () => {
+      if (currentUser) {
+        // Carregar dados do perfil do usuário do Supabase
+        try {
+          const { data: profile } = await supabase
+            .from('users')
+            .select('*')
+            .eq('firebase_id', currentUser.uid)
+            .single();
+            
+          if (profile) {
+            setCustomerName(profile.name || currentUser.displayName || "");
+            setCustomerPhone(profile.phone || currentUser.phoneNumber || "");
+            
+            // Buscar dados de endereço salvos automaticamente
+            const phone = profile.phone || currentUser.phoneNumber;
+            if (phone) {
+              await loadSavedCustomerData(phone);
+            }
+          } else {
+            // Se não tem perfil no Supabase, usar dados do Firebase Auth
+            setCustomerName(currentUser.displayName || "");
+            setCustomerPhone(currentUser.phoneNumber || "");
+            
+            if (currentUser.phoneNumber) {
+              await loadSavedCustomerData(currentUser.phoneNumber);
+            }
+          }
+        } catch (error) {
+          console.error("Erro ao carregar dados do usuário:", error);
+          // Fallback para dados do Firebase Auth
+          setCustomerName(currentUser.displayName || "");
+          setCustomerPhone(currentUser.phoneNumber || "");
+          
+          if (currentUser.phoneNumber) {
+            await loadSavedCustomerData(currentUser.phoneNumber);
+          }
+        }
+      }
+    };
+
+    loadUserData();
+  }, [currentUser]);
+
+  // Função para carregar dados salvos do cliente
+  const loadSavedCustomerData = async (phone: string) => {
+    try {
+      const customerData = await getCustomerByPhone(phone);
+      if (customerData) {
+        // Preencher os campos com os dados salvos apenas se estiverem vazios
+        if (!customerName) setCustomerName(customerData.name || "");
+        if (!cep) setCep(customerData.cep || "");
+        if (!street) setStreet(customerData.street || "");
+        if (!number) setNumber(customerData.number || "");
+        if (!complement) setComplement(customerData.complement || "");
+        if (!neighborhood) setNeighborhood(customerData.neighborhood || "");
+        if (!city) setCity(customerData.city || "");
+        if (!state) setState(customerData.state || "");
+
+        // Recalcular frete quando o CEP vem preenchido automaticamente
+        if (customerData.cep && customerData.cep.replace(/\D/g, "").length === 8) {
+          try {
+            await calculateFreteForCep(customerData.cep);
+          } catch (freteErr: any) {
+            console.error("Erro ao calcular frete automaticamente:", freteErr);
+            const errorMsg = freteErr.message || "Não foi possível calcular o frete";
+            setFreteError(errorMsg);
+            toast({
+              title: "Aviso",
+              description: errorMsg,
+              variant: "destructive",
+            });
+            setValorFrete(0);
+            setDistanciaKm(null);
+          }
+        }
+        
+      }
+    } catch (error) {
+      console.error("Erro ao buscar dados do cliente:", error);
+    }
+  };
+
+  const handlePhoneChange = async (value: string) => {
+    setCustomerPhone(value);
+    
+    // Buscar dados do cliente quando o telefone tiver 10 ou 11 dígitos
+    const cleanPhone = value.replace(/\D/g, '');
+    if (cleanPhone.length >= 11) {
+      setPhoneLoading(true);
+      try {
+        const customerData = await getCustomerByPhone(value);
+        if (customerData) {
+          // Preencher os campos com os dados salvos
+          setCustomerName(customerData.name || "");
+          setCep(customerData.cep || "");
+          setStreet(customerData.street || "");
+          setNumber(customerData.number || "");
+          setComplement(customerData.complement || "");
+          setNeighborhood(customerData.neighborhood || "");
+          setCity(customerData.city || "");
+          setState(customerData.state || "");
+
+          // Recalcular frete quando o CEP é preenchido via busca pelo telefone
+          if (customerData.cep && customerData.cep.replace(/\D/g, "").length === 8) {
+            try {
+              await calculateFreteForCep(customerData.cep);
+            } catch (freteErr: any) {
+              console.error("Erro ao calcular frete pelo telefone:", freteErr);
+              const errorMsg = freteErr.message || "Não foi possível calcular o frete";
+              setFreteError(errorMsg);
+              toast({
+                title: "Aviso",
+                description: errorMsg,
+                variant: "destructive",
+              });
+              setValorFrete(0);
+              setDistanciaKm(null);
+            }
+          }
+          
+        }
+      } catch (error) {
+        console.error("Erro ao buscar dados do cliente:", error);
+      } finally {
+        setPhoneLoading(false);
+      }
+    }
+  };
+
+  const calculateFreteForCep = async (cepValue: string) => {
+    const cleanCep = cepValue.replace(/\D/g, "");
+    console.log("calculateFreteForCep chamado com CEP:", cepValue, "| limpo:", cleanCep);
+    
+    if (cleanCep.length !== 8) {
+      console.log("CEP inválido, saindo...");
+      return;
+    }
+
+    // Limpar erro anterior
+    setFreteError(null);
+
+    console.log("Buscando dados da empresa...");
+    
+    // Buscar CEP da empresa (primeira empresa cadastrada)
+    const { data: empresaData, error: empresaError } = await supabase
+      .from("empresa_info")
+      .select("cep, user_id")
+      .limit(1)
+      .maybeSingle();
+
+    console.log("empresa_info resultado:", { empresaData, empresaError });
+
+    if (empresaError) {
+      console.error("Erro ao buscar empresa:", empresaError);
+      throw empresaError;
+    }
+
+    if (!empresaData?.cep || !empresaData?.user_id) {
+      console.error("Empresa sem CEP ou user_id:", empresaData);
+      throw new Error("Empresa sem CEP configurado para cálculo de frete");
+    }
+
+    console.log("Chamando calculateFreteByCep com:", {
+      cepCliente: cepValue,
+      cepEmpresa: empresaData.cep,
+      userId: empresaData.user_id
+    });
+
+    const freteData = await calculateFreteByCep(
+      cepValue,
+      empresaData.cep,
+      empresaData.user_id
+    );
+
+    console.log("Resultado do frete:", freteData);
+
+    setValorFrete(freteData.valorFrete);
+    setDistanciaKm(freteData.distanciaKm);
+
+    // Mensagem personalizada baseada na origem do cálculo
+    let descricao = `Frete: ${formatCurrency(freteData.valorFrete)}`;
+    if (freteData.origem === "cep_especial") {
+      descricao = `CEP especial - Frete: ${formatCurrency(freteData.valorFrete)}`;
+    } else if (freteData.distanciaKm > 0) {
+      descricao = `Distância: ${freteData.distanciaKm.toFixed(2)}km - Frete: ${formatCurrency(freteData.valorFrete)}`;
+    }
+
+  };
+
+  const handleCepChange = async (value: string) => {
+    setCep(value);
+
+    const cleanCep = value.replace(/\D/g, "");
+    if (cleanCep.length !== 8) {
+      setValorFrete(0);
+      setDistanciaKm(null);
+      return;
+    }
+
+    // Limpar número e focar no campo quando um novo CEP válido for inserido
+    setNumber("");
+
+    setCepLoading(true);
+    try {
+      // Buscar informações do endereço pelo CEP (se falhar, ainda tentamos calcular o frete)
+      try {
+        const cepInfo = await fetchAddressByCep(value);
+        if (cepInfo) {
+          setStreet(cepInfo.street || "");
+          setNeighborhood(cepInfo.neighborhood || "");
+          setCity(cepInfo.city || "");
+          setState(cepInfo.state || "");
+          
+          // Focar no campo de número após buscar o endereço
+          setTimeout(() => {
+            numberInputRef.current?.focus();
+          }, 100);
+        }
+      } catch (error) {
+        console.error("Erro ao buscar CEP:", error);
+        toast({
+          title: "Erro",
+          description: "Não foi possível buscar as informações do CEP",
+          variant: "destructive",
+        });
+      }
+
+      try {
+        await calculateFreteForCep(value);
+      } catch (freteErr: any) {
+        console.error("Erro ao calcular frete:", freteErr);
+        const errorMsg = freteErr.message || "Não foi possível calcular o frete";
+        setFreteError(errorMsg);
+        toast({
+          title: "Aviso",
+          description: errorMsg,
+          variant: "destructive",
+        });
+        setValorFrete(0);
+        setDistanciaKm(null);
+      }
+    } finally {
+      setCepLoading(false);
+    }
+  };
+
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsLoading(true);
+
+  try {
+    const fullAddress = `${street}, ${number}${complement ? `, ${complement}` : ""} - ${neighborhood}, ${city} - ${state}`;
+
+    // Função auxiliar para calcular subtotal de cada item
+    const calculateItemSubtotal = (item: any) => {
+      if (item.isHalfPizza) {
+        return (item.price || 0) * (item.quantity || 1);
+      }
+
+      const basePrice = (item.priceFrom ? 0 : (item.price || 0));
+      let variationsTotal = 0;
+
+      if (item.selectedVariations && Array.isArray(item.selectedVariations)) {
+        item.selectedVariations.forEach((group: any) => {
+          if (group.variations && Array.isArray(group.variations)) {
+            group.variations.forEach((variation: any) => {
+              const additionalPrice = variation.additionalPrice || 0;
+              const quantity = variation.quantity || 1;
+              // Para pizza meio a meio, "whole" cobra 2x o valor do adicional
+              const halfMultiplier = variation.halfSelection === "whole" ? 2 : 1;
+              variationsTotal += additionalPrice * quantity * halfMultiplier;
+            });
+          }
+        });
+      }
+
+      return (basePrice + variationsTotal) * item.quantity;
+    };
+
+    // Montar itens já com subtotal
+    const itemsWithSubtotal = cartItems.map(item => ({
+      menuItemId: item.id,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      selectedVariations: item.selectedVariations || [],
+      selectedBorder: item.selectedBorder || null,
+      priceFrom: item.priceFrom || false,
+      isHalfPizza: item.isHalfPizza || false,
+      combination: item.combination || null,
+      subtotal: calculateItemSubtotal(item), // 🔥 agora salva
+    }));
+
+    // Calcular total do pedido (incluindo frete)
+    const subtotalPedido = itemsWithSubtotal.reduce((acc, item) => acc + item.subtotal, 0);
+    const totalComFrete = finalTotal + valorFrete;
+
+    const orderData = {
+      customerName,
+      customerPhone,
+      address: fullAddress,
+      paymentMethod,
+      observations,
+      items: itemsWithSubtotal,
+      subtotal: finalTotal, // Subtotal com desconto mas sem frete
+      frete: valorFrete, // Valor do frete
+      total: totalComFrete, // Total com desconto e frete aplicados
+      discount: discountAmount,
+      couponCode: appliedCoupon?.nome ?? null,
+      firebaseId: currentUser?.uid ?? null,
+      userName: currentUser?.displayName ?? null,
+      userEmail: currentUser?.email ?? null,
+    };
+
+    console.log("[CHECKOUT] Dados do pedido sendo enviados:", JSON.stringify(orderData, null, 2));
+
+    const order = await createOrder(orderData);
+
+    // Registrar uso do cupom via Edge Function (usa service role para bypass de RLS)
+    if (appliedCoupon) {
+      console.log("[CHECKOUT] Chamando Edge Function para registrar uso do cupom...");
+      try {
+        const { data: registroData, error: registroError } = await supabase.functions.invoke(
+          "registrar-uso-cupom",
+          {
+            body: {
+              cupom_id: appliedCoupon.id,
+              firebase_id: currentUser?.uid || null,
+              pedido_id: order.id,
+            },
+          }
+        );
+
+        if (registroError) {
+          console.error("[CHECKOUT] Erro ao chamar Edge Function:", registroError);
+        } else {
+          console.log("[CHECKOUT] Resposta da Edge Function:", registroData);
+          if (registroData?.atingiu_limite) {
+            console.log("[CHECKOUT] Cupom atingiu limite e foi desativado automaticamente");
+          }
+        }
+      } catch (fnError) {
+        console.error("[CHECKOUT] Erro ao invocar Edge Function de cupom:", fnError);
+      }
+    }
+
+    // Salvar dados do cliente após criar o pedido
+    await saveCustomerData({
+      name: customerName,
+      phone: customerPhone,
+      cep,
+      street,
+      number,
+      complement,
+      neighborhood,
+      city,
+      state,
+    });
+
+    // Fidelidade será contabilizada apenas quando o pedido for entregue (status "delivered")
+
+    clearCart();
+
+    toast({
+      title: "Pedido realizado com sucesso!",
+      description: `Seu pedido #${order.id.substring(0, 6)} foi enviado para o restaurante.`,
+    });
+
+    navigate("/");
+  } catch (error) {
+    console.error("Erro ao criar pedido:", error);
+    toast({
+      title: "Erro",
+      description: "Não foi possível processar seu pedido. Tente novamente.",
+      variant: "destructive",
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+
+  if (cartItems.length === 0) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center p-8">
+            <h2 className="text-xl font-semibold mb-4">Seu carrinho está vazio</h2>
+            <Button onClick={() => navigate("/")} variant="outline">
+              Voltar ao cardápio
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold mb-6">Finalizar Pedido</h1>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Dados do Cliente</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="customerPhone">Telefone/WhatsApp</Label>
+                <Input
+                  id="customerPhone"
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => handlePhoneChange(e.target.value)}
+                  disabled={phoneLoading}
+                  required
+                />
+                {phoneLoading && <p className="text-sm text-gray-500 mt-1">Buscando dados...</p>}
+              </div>
+              
+              <div>
+                <Label htmlFor="customerName">Nome completo</Label>
+                <Input
+                  id="customerName"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <Separator />
+
+              <h3 className="text-lg font-semibold">Endereço de Entrega</h3>
+              
+              <div>
+                <Label htmlFor="cep">CEP</Label>
+                <Input
+                  id="cep"
+                  value={cep}
+                  onChange={(e) => handleCepChange(e.target.value)}
+                  placeholder="00000-000"
+                  disabled={cepLoading}
+                  required
+                />
+                {cepLoading && <p className="text-sm text-gray-500 mt-1">Buscando CEP...</p>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-1">
+                  <Label htmlFor="street">Rua</Label>
+                  <Input
+                    id="street"
+                    value={street}
+                    onChange={(e) => setStreet(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="col-span-1">
+                  <Label htmlFor="number">Número</Label>
+                  <Input
+                    id="number"
+                    ref={numberInputRef}
+                    value={number}
+                    onChange={(e) => setNumber(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="complement">Complemento</Label>
+                <Input
+                  id="complement"
+                  value={complement}
+                  onChange={(e) => setComplement(e.target.value)}
+                  placeholder="Apto, bloco, etc."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="neighborhood">Bairro</Label>
+                  <Input
+                    id="neighborhood"
+                    value={neighborhood}
+                    onChange={(e) => setNeighborhood(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="city">Cidade</Label>
+                  <Input
+                    id="city"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <Label>Forma de Pagamento</Label>
+                <RadioGroup value={paymentMethod} onValueChange={(value: "card" | "cash") => setPaymentMethod(value)}>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="card" id="card" />
+                    <Label htmlFor="card">Cartão</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="cash" id="cash" />
+                    <Label htmlFor="cash">Dinheiro</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="pix" id="pix" />
+                    <Label htmlFor="pix">PIX</Label>
+                  </div>                 
+                </RadioGroup>
+              </div>
+
+              <div>
+                <Label htmlFor="observations">Observações</Label>
+                <Textarea
+                  id="observations"
+                  value={observations}
+                  onChange={(e) => setObservations(e.target.value)}
+                  placeholder="Observações sobre o pedido..."
+                />
+              </div>
+
+              {freteError && (
+                <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-md text-destructive text-sm text-center">
+                  {freteError}
+                </div>
+              )}
+
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Resumo do Pedido</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {cartItems.map((item, index) => (
+                <div
+                  key={item.id}
+                  className="flex flex-col gap-0 border-b pb-4 mb-2 last:border-b-0 last:pb-0 relative group"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-semibold text-lg">{item.name}</p>
+                      {item.isHalfPizza && item.combination ? (
+                        <div className="text-sm text-gray-600">
+                          <p>{item.quantity}x Pizza {item.combination.tamanho} - Meio a meio</p>
+                          <p className="text-xs">1/2 {item.combination.sabor1.name} + 1/2 {item.combination.sabor2.name}</p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-600">
+                          {item.quantity}x {item.priceFrom ? (
+                            <span>
+                              <span className="text-xs text-gray-500">a partir de</span> R$ 0,00
+                            </span>
+                          ) : (
+                            `R$ ${item.price.toFixed(2)}`
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="text-right font-semibold text-lg">
+                        {/* Exibe apenas o preço base da pizza/item */}
+                        R$ {(() => {
+                          const baseUnitPrice = item.isHalfPizza
+                            ? (item.price ?? 0)
+                            : (item.priceFrom ? 0 : (item.price ?? 0));
+                          return (baseUnitPrice * item.quantity).toFixed(2);
+                        })()}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setItemToDelete(item.id)}
+                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                        title="Remover item"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Exibir grupos de variações e suas quantidades/subtotais */}
+                  {item.selectedVariations && item.selectedVariations.length > 0 && (
+                    <div className="mt-2 ml-1 text-sm">
+                      {item.selectedVariations.map((group, groupIndex) => (
+                        <div key={groupIndex} className="mb-2">
+                          <div className="font-semibold text-muted-foreground">{group.groupName}:</div>
+                          <div className="ml-2 text-muted-foreground flex flex-col gap-0.5">
+                            {group.variations.map((variation, varIndex) => {
+                              // Para pizza meio a meio com "whole", multiplica por 2
+                              const halfMultiplier = item.isHalfPizza && variation.halfSelection === "whole" ? 2 : 1;
+                              const displayQuantity = (variation.quantity || 1) * halfMultiplier;
+                              const variationTotal =
+                                (variation.additionalPrice || 0) *
+                                displayQuantity *
+                                item.quantity;
+
+                              // Mostrar quantidade sempre, mesmo se for 1
+                              if (variation.quantity > 0) {
+                                return (
+                                  <div key={varIndex} className="flex items-center justify-between">
+                                    <span>
+                                      <span className="inline-block w-7">{displayQuantity}x</span>
+                                      {variation.name || "Variação"}
+                                      {variation.additionalPrice && variation.additionalPrice > 0 ? (
+                                        <>
+                                          {" "}
+                                          <span className="text-muted-foreground/70">
+                                            (+R$ {variation.additionalPrice.toFixed(2)})
+                                          </span>
+                                        </>
+                                      ) : null}
+                                    </span>
+                                    {/* Mostrar subtotal apenas se houver preço */}
+                                    {variation.additionalPrice && variation.additionalPrice > 0 && (
+                                      <span className="text-green-600 font-semibold tabular-nums">
+                                        +R$ {(variationTotal).toFixed(2)}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Exibir borda recheada selecionada */}
+                  {item.selectedBorder && (
+                    <div className="mt-2 ml-1 text-sm">
+                      <div className="font-semibold text-muted-foreground">Borda:</div>
+                      <div className="ml-2 text-muted-foreground flex items-center justify-between">
+                        <span>
+                          {item.selectedBorder.name}
+                          {item.selectedBorder.additionalPrice > 0 && (
+                            <span className="text-muted-foreground/70 ml-1">
+                              (+R$ {item.selectedBorder.additionalPrice.toFixed(2)})
+                            </span>
+                          )}
+                        </span>
+                        {item.selectedBorder.additionalPrice > 0 && (
+                          <span className="text-green-600 font-semibold tabular-nums">
+                            +R$ {(item.selectedBorder.additionalPrice * item.quantity).toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Subtotal do item */}
+                  <div className="flex justify-end mt-2 pt-2 border-t border-dashed">
+                    <span className="text-sm font-semibold">
+                      Subtotal: R$ {(() => {
+                        const basePrice = item.isHalfPizza
+                          ? (item.price ?? 0)
+                          : (item.priceFrom ? 0 : (item.price ?? 0));
+                        
+                        let variationsTotal = 0;
+                        if (item.selectedVariations && item.selectedVariations.length > 0) {
+                          item.selectedVariations.forEach((group) => {
+                            group.variations.forEach((variation) => {
+                              const halfMultiplier = item.isHalfPizza && variation.halfSelection === "whole" ? 2 : 1;
+                              const additionalPrice = variation.additionalPrice || 0;
+                              const quantity = variation.quantity || 1;
+                              variationsTotal += additionalPrice * quantity * halfMultiplier;
+                            });
+                          });
+                        }
+                        
+                        // Adicionar valor da borda selecionada
+                        const borderPrice = item.selectedBorder?.additionalPrice || 0;
+                        
+                        return ((basePrice + variationsTotal + borderPrice) * item.quantity).toFixed(2);
+                      })()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              
+              <Separator />
+              
+              <div className="space-y-2">
+                <div className="flex justify-between text-md">
+                  <span>Subtotal:</span>
+                  <span>R$ {cartTotal.toFixed(2)}</span>
+                </div>
+                
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-md text-green-600">
+                    <span>Desconto ({appliedCoupon?.nome}):</span>
+                    <span>- R$ {discountAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                
+                {valorFrete > 0 && (
+                  <div className="flex justify-between text-md">
+                    <span>Frete:</span>
+                    <span>R$ {valorFrete.toFixed(2)}</span>
+                  </div>
+                )}
+                
+                <div className="flex justify-between font-bold text-lg">
+                  <span>Total</span>
+                  <span>R$ {(finalTotal + valorFrete).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-9 bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200"
+            onClick={() => navigate("/")}
+          >
+            🍕 Adicionar mais itens
+          </Button>
+
+          <Button 
+            className="w-full" 
+            disabled={isLoading || !!freteError}
+            onClick={(e) => {
+              e.preventDefault();
+              const form = document.querySelector('form');
+              if (form) form.requestSubmit();
+            }}
+          >
+            {isLoading ? "Processando..." : `Finalizar Pedido - ${formatCurrency(finalTotal + valorFrete)}`}
+          </Button>
+        </div>
+      </div>
+
+      {/* Dialog de confirmação para deletar item */}
+      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover item do pedido?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover este item do seu pedido?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (itemToDelete) {
+                  removeFromCart(itemToDelete);
+                  setItemToDelete(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+};
+
+export default Checkout;
