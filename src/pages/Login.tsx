@@ -25,7 +25,7 @@ const Login = () => {
 
       // 🔥 busca role logo após login
       const response = await fetch(
-        "https://n8n-n8n-start.yh11mi.easypanel.host/webhook/user_role",
+        "https://n8n-n8n-start.yh11mi.easypanel.host/webhook/clickprato_aut5_get_role",
         {
           method: "POST",
           headers: {
