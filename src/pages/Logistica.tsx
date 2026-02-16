@@ -339,7 +339,7 @@ const Logistica = () => {
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="km_direto" id="km_direto" />
                   <Label htmlFor="km_direto" className="font-normal cursor-pointer">
-                    Quilometragem Direta - Cobrança baseada na distância informada pelo cliente
+                    Quilometragem Direta - Cobrança baseada no percurso do entregador
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
