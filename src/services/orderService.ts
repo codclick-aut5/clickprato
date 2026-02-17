@@ -17,12 +17,15 @@ import { verificarFidelidade } from "@/services/fidelidadeService";
 
 const ORDERS_COLLECTION = "orders";
 
-// Remove undefined para compatibilidade com Firestore
+// Remove `undefined` de objetos/arrays (Firestore não aceita undefined)
 const removeUndefinedDeep = (value: any): any => {
   if (value === undefined) return undefined;
   if (value === null) return null;
-  if (value instanceof Date || value instanceof Timestamp) return value;
-  if (Array.isArray(value)) return value.map(removeUndefinedDeep).filter(v => v !== undefined);
+  if (value instanceof Date) return value;
+  if (value instanceof Timestamp) return value;
+  if (Array.isArray(value)) {
+    return value.map(removeUndefinedDeep).filter((v) => v !== undefined);
+  }
   if (typeof value === "object") {
     const out: Record<string, any> = {};
     Object.entries(value).forEach(([key, val]) => {
@@ -40,9 +43,12 @@ const getVariationPrice = async (variationId: string): Promise<number> => {
     const variation = variations.find((v) => v.id === variationId);
     return variation?.additionalPrice || 0;
   } catch (error) {
+    console.error("Erro ao obter preço da variação:", error);
     return 0;
   }
 };
+
+// --- FUNÇÕES DE EXPORTAÇÃO ---
 
 export const createOrder = async (orderData: CreateOrderRequest): Promise<Order> => {
   try {
@@ -53,14 +59,14 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
         const itemQty = item.quantity ?? 1;
         const isHalfPizza = !!item.isHalfPizza;
 
-        // 1. Preço Base (Apenas a massa/recheio base)
+        // Preço base da pizza (sem adicionais/borda)
         const baseUnitPrice = isHalfPizza
           ? (item.combination?.price ?? item.price ?? 0)
           : (item.priceFrom ? 0 : (item.price ?? 0));
 
         let itemSubtotal = baseUnitPrice * itemQty;
 
-        // 2. Processar Variações (Adicionais de recheio)
+        // Variações e Adicionais
         let processedVariations: any[] = [];
         if (item.selectedVariations && Array.isArray(item.selectedVariations)) {
           for (const group of item.selectedVariations) {
@@ -76,8 +82,6 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
               const price = addPrice ?? 0;
               const vQty = variation.quantity ?? 1;
               const halfSel = variationAny.halfSelection ?? null;
-              
-              // Multiplicador: se for meio a meio e a variação for na pizza "inteira" (ex: borda ou extra em ambas)
               const halfMultiplier = (isHalfPizza && halfSel === "whole") ? 2 : 1;
               
               itemSubtotal += (price * vQty * halfMultiplier * itemQty);
@@ -100,10 +104,9 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
           }
         }
 
-        // 3. Processar Borda Recheada
+        // Borda Recheada (Soma apenas ao subtotal do item)
         const selectedBorder = (item as any).selectedBorder;
         if (selectedBorder && selectedBorder.additionalPrice > 0) {
-          // Soma o valor da borda ao subtotal do item
           itemSubtotal += (selectedBorder.additionalPrice * itemQty);
         }
 
@@ -112,18 +115,17 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
         return removeUndefinedDeep({
           menuItemId: item.menuItemId ?? (item as any).id ?? null,
           name: item.name,
-          price: baseUnitPrice, // Preço original para exibição
+          price: baseUnitPrice, 
           quantity: itemQty,
           selectedVariations: processedVariations,
           isHalfPizza,
           combination: item.combination || null,
           selectedBorder: selectedBorder || null,
-          subtotal: itemSubtotal, // Valor final (Pizza + Adicionais + Borda)
+          subtotal: itemSubtotal, 
         });
       })
     );
 
-    // Montagem do objeto final para o Firestore
     const orderToSave = removeUndefinedDeep({
       customerName: orderData.customerName,
       customerPhone: orderData.customerPhone,
@@ -155,13 +157,75 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
   }
 };
 
-// Funções de busca e formatação permanecem as mesmas
 export const getOrderById = async (orderId: string): Promise<Order | null> => {
+  try {
+    const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+    const orderSnap = await getDoc(orderRef);
+    if (!orderSnap.exists()) return null;
+    const data = orderSnap.data();
+    return {
+      id: orderSnap.id,
+      ...data,
+      createdAt: formatTimestamp(data.createdAt),
+      updatedAt: formatTimestamp(data.updatedAt),
+    } as Order;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const getOrdersByPhone = async (phone: string): Promise<Order[]> => {
+  const q = query(collection(db, ORDERS_COLLECTION), where("customerPhone", "==", phone), orderBy("createdAt", "desc"));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: formatTimestamp(doc.data().createdAt),
+    updatedAt: formatTimestamp(doc.data().updatedAt)
+  })) as Order[];
+};
+
+export const getTodayOrders = async (status?: string): Promise<Order[]> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const q = query(collection(db, ORDERS_COLLECTION), where("createdAt", ">=", Timestamp.fromDate(today)), orderBy("createdAt", "desc"));
+  const snapshot = await getDocs(q);
+  let orders = snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: formatTimestamp(doc.data().createdAt),
+    updatedAt: formatTimestamp(doc.data().updatedAt)
+  })) as Order[];
+  if (status && status !== "all") orders = orders.filter(o => o.status === status);
+  return orders;
+};
+
+export const getOrdersByDateRange = async (startDate: Date, endDate: Date, status?: string): Promise<Order[]> => {
+  const start = new Date(startDate); start.setHours(0,0,0,0);
+  const end = new Date(endDate); end.setHours(23,59,59,999);
+  const q = query(collection(db, ORDERS_COLLECTION), where("createdAt", ">=", Timestamp.fromDate(start)), where("createdAt", "<=", Timestamp.fromDate(end)), orderBy("createdAt", "desc"));
+  const snapshot = await getDocs(q);
+  let orders = snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: formatTimestamp(doc.data().createdAt),
+    updatedAt: formatTimestamp(doc.data().updatedAt)
+  })) as Order[];
+  if (status && status !== "all") orders = orders.filter(o => o.status === status);
+  return orders;
+};
+
+export const updateOrder = async (orderId: string, updates: UpdateOrderRequest): Promise<Order | null> => {
   const orderRef = doc(db, ORDERS_COLLECTION, orderId);
   const orderSnap = await getDoc(orderRef);
   if (!orderSnap.exists()) return null;
-  const data = orderSnap.data();
-  return { id: orderSnap.id, ...data, createdAt: formatTimestamp(data.createdAt), updatedAt: formatTimestamp(data.updatedAt) } as Order;
+  const currentOrder = orderSnap.data() as Order;
+  const previousStatus = currentOrder.status;
+  await updateDoc(orderRef, { ...updates, updatedAt: new Date() });
+  if (updates.status === "delivered" && previousStatus !== "delivered") {
+    await verificarFidelidade(currentOrder.customerName || "", currentOrder.customerPhone || "", currentOrder.items || []);
+  }
+  return getOrderById(orderId);
 };
 
 const formatTimestamp = (timestamp: any): string => {
