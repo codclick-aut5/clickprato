@@ -143,7 +143,6 @@ export const createOrder = async (
         const selectedBorder = (item as any).selectedBorder;
         if (selectedBorder && selectedBorder.additionalPrice > 0) {
           const borderCost = selectedBorder.additionalPrice;
-          itemTotal += borderCost;
           console.log(`Borda recheada: ${selectedBorder.name} +R$ ${borderCost}`);
         }
 
