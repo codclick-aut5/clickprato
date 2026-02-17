@@ -182,7 +182,7 @@ const Admin = () => {
             <div className="flex items-start gap-2 mb-2">
               <Database className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
               <h3 className="font-medium text-yellow-800 text-sm sm:text-base">
-                Coleções do Firebase Vazias
+                Seu Cardápio ainda não tem produtos !
               </h3>
             </div>
             <p className="text-yellow-700 mb-3 text-xs sm:text-sm leading-relaxed">
