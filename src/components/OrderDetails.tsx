@@ -236,7 +236,7 @@ const sendOrderStatusWebhook = async (orderData: Order & { cancellationReason?: 
 
     console.log("📦 Enviando payload do pedido para webhook n8n:", payload);
 
-    const response = await fetch("https://n8n-n8n-start.yh11mi.easypanel.host/webhook/status_pedido", {
+    const response = await fetch("https://n8n-n8n-start.yh11mi.easypanel.host/webhook/status_pedido_aut5", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
