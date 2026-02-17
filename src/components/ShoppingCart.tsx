@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useCart } from "@/contexts/CartContext";
-import { X, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { X, Minus, Plus, ShoppingBag, Trash2, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils";
@@ -55,9 +55,14 @@ const ShoppingCart: React.FC = () => {
     if (!couponCode.trim()) return;
     setCouponLoading(true);
     try {
-      const { data: cupom, error } = await supabase.from("cupons" as any).select("*").ilike("nome", couponCode.trim()).maybeSingle();
+      const { data: cupom, error } = await supabase
+        .from("cupons" as any)
+        .select("*")
+        .ilike("nome", couponCode.trim())
+        .maybeSingle();
+
       if (error || !cupom) {
-        toast({ title: "Cupom não encontrado", variant: "destructive" });
+        toast({ title: "Cupom inválido", variant: "destructive" });
         return;
       }
       setAppliedCoupon(cupom as any);
@@ -70,32 +75,23 @@ const ShoppingCart: React.FC = () => {
     }
   };
 
-  const getVariationPrice = (variationId: string): number => {
-    const variation = variations.find(v => v.id === variationId);
-    return variation?.additionalPrice || 0;
-  };
+  const getVariationName = (id: string) => variations.find(v => v.id === id)?.name || "...";
+  const getVariationPrice = (id: string) => variations.find(v => v.id === id)?.additionalPrice || 0;
 
   const calculateItemTotal = (item: any): number => {
-    // 1. Preço Base
-    const basePrice = (item.isHalfPizza || !item.priceFrom) ? (item.price || 0) : 0;
-    
-    // 2. Soma das Variações
-    let variationsTotal = 0;
+    const basePrice = item.price || 0;
+    let extras = 0;
     if (item.selectedVariations) {
-      item.selectedVariations.forEach((group: any) => {
-        group.variations?.forEach((v: any) => {
+      item.selectedVariations.forEach((g: any) => {
+        g.variations?.forEach((v: any) => {
           const price = getVariationPrice(v.variationId);
           const multiplier = (item.isHalfPizza && v.halfSelection === "whole") ? 2 : 1;
-          variationsTotal += price * (v.quantity || 1) * multiplier;
+          extras += price * (v.quantity || 1) * multiplier;
         });
       });
     }
-
-    // 3. Soma da Borda (SEM DUPLICAR)
-    const borderPrice = item.selectedBorder?.additionalPrice || 0;
-    
-    // O total da linha é: (Base + Variações + Borda) * Quantidade
-    return (basePrice + variationsTotal + borderPrice) * item.quantity;
+    const border = item.selectedBorder?.additionalPrice || 0;
+    return (basePrice + extras + border) * item.quantity;
   };
 
   if (window.location.pathname === "/checkout") return null;
@@ -109,45 +105,84 @@ const ShoppingCart: React.FC = () => {
         </div>
       </button>
 
-      <div className={cn("fixed inset-0 bg-black/50 z-40", isCartOpen ? "block" : "hidden")} onClick={() => setIsCartOpen(false)}></div>
+      <div className={cn("fixed inset-0 bg-black/50 z-40 transition-opacity", isCartOpen ? "opacity-100" : "opacity-0 pointer-events-none")} onClick={() => setIsCartOpen(false)}></div>
 
-      <div className={cn("fixed right-0 top-0 h-full w-full sm:w-96 bg-white z-50 p-6 shadow-xl overflow-y-auto transform transition-transform", isCartOpen ? "translate-x-0" : "translate-x-full")}>
+      <div className={cn("fixed right-0 top-0 h-full w-full sm:w-96 bg-white z-50 p-6 shadow-xl flex flex-col transform transition-transform duration-300", isCartOpen ? "translate-x-0" : "translate-x-full")}>
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold">Seu Pedido</h2>
-          <button onClick={() => setIsCartOpen(false)}><X className="h-6 w-6" /></button>
+          <h2 className="text-xl font-bold font-montserrat text-food-black">O Meu Pedido</h2>
+          <button onClick={() => setIsCartOpen(false)}><X className="h-6 w-6 text-gray-400" /></button>
         </div>
 
-        {cartItems.length === 0 ? (
-          <p className="text-center text-gray-500 mt-10">Carrinho vazio</p>
-        ) : (
-          <div className="space-y-4">
-            {cartItems.map((item) => (
-              <div key={item.id} className="border-b pb-4">
-                <div className="flex justify-between font-medium">
-                  <span>{item.name}</span>
-                  <button onClick={() => removeFromCart(item.id)}><Trash2 className="h-4 w-4 text-gray-400" /></button>
-                </div>
-                {item.selectedBorder && (
-                  <p className="text-xs text-gray-500">Borda: {item.selectedBorder.name} (+{formatCurrency(item.selectedBorder.additionalPrice)})</p>
-                )}
-                <div className="flex justify-between items-center mt-2">
-                  <div className="flex items-center border rounded">
-                    <button onClick={() => decreaseQuantity(item.id)} className="px-2">-</button>
-                    <span className="px-2">{item.quantity}</span>
-                    <button onClick={() => increaseQuantity(item.id)} className="px-2">+</button>
+        <div className="flex-1 overflow-y-auto pr-2">
+          {cartItems.length === 0 ? (
+            <div className="text-center py-10 text-gray-500">Carrinho vazio</div>
+          ) : (
+            <div className="space-y-6">
+              {cartItems.map((item) => (
+                <div key={item.id} className="border-b border-gray-100 pb-4">
+                  <div className="flex justify-between">
+                    <h3 className="font-semibold text-food-black">{item.name}</h3>
+                    <button onClick={() => removeFromCart(item.id)}><Trash2 className="h-4 w-4 text-gray-300 hover:text-red-500" /></button>
                   </div>
-                  <span className="font-bold">{formatCurrency(calculateItemTotal(item))}</span>
+                  
+                  {/* Detalhes dos Adicionais */}
+                  <div className="mt-1 space-y-1">
+                    {item.selectedVariations?.map((g: any) => g.variations?.map((v: any) => (
+                      <div key={v.variationId} className="text-xs text-gray-500 flex justify-between">
+                        <span>• {getVariationName(v.variationId)}</span>
+                        <span>+{formatCurrency(getVariationPrice(v.variationId) * (item.isHalfPizza && v.halfSelection === "whole" ? 2 : 1))}</span>
+                      </div>
+                    )))}
+                    {item.selectedBorder && (
+                      <div className="text-xs text-brand font-medium flex justify-between">
+                        <span>• Borda: {item.selectedBorder.name}</span>
+                        <span>+{formatCurrency(item.selectedBorder.additionalPrice)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between items-center mt-3">
+                    <div className="flex items-center border border-gray-200 rounded-lg">
+                      <button onClick={() => decreaseQuantity(item.id)} className="p-1 px-2"><Minus className="h-3 w-3" /></button>
+                      <span className="px-2 text-sm font-medium">{item.quantity}</span>
+                      <button onClick={() => increaseQuantity(item.id)} className="p-1 px-2"><Plus className="h-3 w-3" /></button>
+                    </div>
+                    <span className="font-bold text-food-black">{formatCurrency(calculateItemTotal(item))}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
-            
-            <div className="pt-4 space-y-2">
-              <div className="flex justify-between"><span>Subtotal</span><span>{formatCurrency(cartTotal)}</span></div>
-              {appliedCoupon && <div className="flex justify-between text-green-600"><span>Desconto</span><span>-{formatCurrency(discountAmount)}</span></div>}
-              <Separator />
-              <div className="flex justify-between text-lg font-bold"><span>Total</span><span>{formatCurrency(finalTotal)}</span></div>
-              <Button className="w-full bg-food-green mt-4" onClick={() => { setIsCartOpen(false); navigate("/checkout"); }}>Finalizar Pedido</Button>
+              ))}
             </div>
+          )}
+        </div>
+
+        {cartItems.length > 0 && (
+          <div className="mt-6 space-y-4 pt-4 border-t border-gray-100">
+            {/* Campo de Cupom */}
+            <div className="flex gap-2">
+              <Input 
+                placeholder="Código do Cupom" 
+                value={couponCode} 
+                onChange={(e) => setCouponCode(e.target.value)}
+                className="h-10 text-sm"
+                disabled={!!appliedCoupon}
+              />
+              {appliedCoupon ? (
+                <Button variant="outline" size="sm" onClick={() => setAppliedCoupon(null)} className="text-red-500 border-red-200">Remover</Button>
+              ) : (
+                <Button size="sm" onClick={handleApplyCoupon} disabled={couponLoading} className="bg-brand">Aplicar</Button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm text-gray-600"><span>Subtotal</span><span>{formatCurrency(cartTotal)}</span></div>
+              {appliedCoupon && <div className="flex justify-between text-sm text-green-600"><span>Desconto</span><span>-{formatCurrency(discountAmount)}</span></div>}
+              <Separator className="my-2" />
+              <div className="flex justify-between text-lg font-bold text-food-black"><span>Total</span><span>{formatCurrency(finalTotal)}</span></div>
+            </div>
+
+            <Button className="w-full bg-food-green py-6 text-lg font-bold shadow-md hover:bg-opacity-90" onClick={() => { setIsCartOpen(false); navigate("/checkout"); }}>
+              Finalizar Pedido
+            </Button>
           </div>
         )}
       </div>
