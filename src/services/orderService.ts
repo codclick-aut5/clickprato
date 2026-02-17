@@ -52,15 +52,14 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
         const itemQty = item.quantity ?? 1;
         const isHalfPizza = !!item.isHalfPizza;
 
-        // PREÇO BASE: Apenas a pizza
+        // PREÇO BASE: Se for meio a meio, pega o preço da combinação
         const baseUnitPrice = isHalfPizza
           ? (item.combination?.price ?? item.price ?? 0)
           : (item.priceFrom ? 0 : (item.price ?? 0));
 
-        // Iniciamos o subtotal da LINHA (quantidade x preço base)
         let itemSubtotal = baseUnitPrice * itemQty;
 
-        // VARIAÇÕES/ADICIONAIS
+        // VARIAÇÕES
         let processedVariations: any[] = [];
         if (item.selectedVariations && Array.isArray(item.selectedVariations)) {
           for (const group of item.selectedVariations) {
@@ -78,7 +77,6 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
                 const price = addPrice ?? 0;
                 const multiplier = (isHalfPizza && vAny.halfSelection === "whole") ? 2 : 1;
                 
-                // Soma adicional ao subtotal da linha
                 itemSubtotal += (price * (variation.quantity || 1) * multiplier * itemQty);
 
                 variationsInGroup.push({
@@ -100,7 +98,7 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
           }
         }
 
-        // BORDA: Adiciona ao subtotal da linha APENAS SE existir
+        // BORDA: Soma apenas uma vez ao subtotal do item
         const selectedBorder = (item as any).selectedBorder;
         if (selectedBorder && selectedBorder.additionalPrice > 0) {
           itemSubtotal += (selectedBorder.additionalPrice * itemQty);
@@ -122,7 +120,6 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
       })
     );
 
-    // Ignoramos o orderData.total que vem do front e usamos o nosso cálculo limpo
     const finalSubtotal = totalItensSomados;
     const finalTotal = finalSubtotal + (orderData.frete ?? 0) - (orderData.discount ?? 0);
 
@@ -160,7 +157,7 @@ export const getOrderById = async (orderId: string): Promise<Order | null> => {
 };
 
 export const getOrdersByPhone = async (phone: string): Promise<Order[]> => {
-  const q = query(collection(db, ORDERS_COLLECTION), where(\"customerPhone\", \"==\", phone), orderBy(\"createdAt\", \"desc\"));
+  const q = query(collection(db, ORDERS_COLLECTION), where("customerPhone", "==", phone), orderBy("createdAt", "desc"));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), createdAt: formatTimestamp(doc.data().createdAt), updatedAt: formatTimestamp(doc.data().updatedAt) })) as Order[];
 };
@@ -168,20 +165,20 @@ export const getOrdersByPhone = async (phone: string): Promise<Order[]> => {
 export const getTodayOrders = async (status?: string): Promise<Order[]> => {
   const today = new Date();
   today.setHours(0,0,0,0);
-  const q = query(collection(db, ORDERS_COLLECTION), where(\"createdAt\", \">=\", Timestamp.fromDate(today)), orderBy(\"createdAt\", \"desc\"));
+  const q = query(collection(db, ORDERS_COLLECTION), where("createdAt", ">=", Timestamp.fromDate(today)), orderBy("createdAt", "desc"));
   const snapshot = await getDocs(q);
   let orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), createdAt: formatTimestamp(doc.data().createdAt), updatedAt: formatTimestamp(doc.data().updatedAt) })) as Order[];
-  if (status && status !== \"all\") orders = orders.filter(o => o.status === status);
+  if (status && status !== "all") orders = orders.filter(o => o.status === status);
   return orders;
 };
 
 export const getOrdersByDateRange = async (startDate: Date, endDate: Date, status?: string): Promise<Order[]> => {
   const start = new Date(startDate); start.setHours(0,0,0,0);
   const end = new Date(endDate); end.setHours(23,59,59,999);
-  const q = query(collection(db, ORDERS_COLLECTION), where(\"createdAt\", \">=\", Timestamp.fromDate(start)), where(\"createdAt\", \"<=\", Timestamp.fromDate(end)), orderBy(\"createdAt\", \"desc\"));
+  const q = query(collection(db, ORDERS_COLLECTION), where("createdAt", ">=", Timestamp.fromDate(start)), where("createdAt", "<=", Timestamp.fromDate(end)), orderBy("createdAt", "desc"));
   const snapshot = await getDocs(q);
   let orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), createdAt: formatTimestamp(doc.data().createdAt), updatedAt: formatTimestamp(doc.data().updatedAt) })) as Order[];
-  if (status && status !== \"all\") orders = orders.filter(o => o.status === status);
+  if (status && status !== "all") orders = orders.filter(o => o.status === status);
   return orders;
 };
 
@@ -191,15 +188,15 @@ export const updateOrder = async (orderId: string, updates: UpdateOrderRequest):
   if (!orderSnap.exists()) return null;
   const currentOrder = orderSnap.data() as Order;
   await updateDoc(orderRef, { ...updates, updatedAt: new Date() });
-  if (updates.status === \"delivered\" && currentOrder.status !== \"delivered\") {
-    await verificarFidelidade(currentOrder.customerName || \"\", currentOrder.customerPhone || \"\", currentOrder.items || []);
+  if (updates.status === "delivered" && currentOrder.status !== "delivered") {
+    await verificarFidelidade(currentOrder.customerName || "", currentOrder.customerPhone || "", currentOrder.items || []);
   }
   return getOrderById(orderId);
 };
 
 const formatTimestamp = (timestamp: any): string => {
   if (!timestamp) return new Date().toISOString();
-  if (typeof timestamp === \"string\") return timestamp;
+  if (typeof timestamp === "string") return timestamp;
   if (timestamp.toDate) return timestamp.toDate().toISOString();
   return new Date().toISOString();
 };
