@@ -6,7 +6,7 @@ const RestaurantHeader: React.FC = () => {
     <div className="relative">
       <div className="h-48 sm:h-64 w-full bg-gradient-to-l from-brand-300 to-brand-600 overflow-hidden">
         <img
-          src="https://ypsfoumafbfgcvrxylmw.supabase.co/storage/v1/object/public/pratos-df-pizzaria/bg_oliveira.webp"
+          src="https://jjvtjuemmkmwkoxfzyng.supabase.co/storage/v1/object/public/imagens-cardapio/clickprato.png"
           alt="Sabor Delivery Fácil"
           className="w-full h-full object-cover mix-blend-overlay opacity-100"
           onError={(e) => {
@@ -34,7 +34,7 @@ const RestaurantHeader: React.FC = () => {
               <p className="text-gray-600 mt-1"><b>Bairro Boa Vista</b></p>
               <p className="text-gray-600 mt-1"><b>São Caetano do Sul</b></p>
               <p className="text-gray-600 mt-1"><b>&nbsp;</b></p>
-              <p className="text-gray-600 mt-1">Cardápio Digital com Inteligência Artificial</p>
+              <p className="text-gray-600 mt-1"><b>Cardápio Digital com Inteligência Artificial</b></p>
               <p className="text-gray-600 mt-1"><b>&nbsp;</b></p>              
               <div className="flex items-center justify-center sm:justify-start mt-2">
                 <div className="flex text-yellow-400">
