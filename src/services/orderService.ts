@@ -114,7 +114,7 @@ export const createOrder = async (
                 const variationQty = variation.quantity ?? 1;
                 const halfSel = variationAny.halfSelection ?? null;
                 const halfMultiplier =
-                  isHalfPizza && halfSel === "whole" ? 2 : 1;
+                  isHalfPizza && halfSel === "whole";
 
                 const variationCost =
                   additionalPrice * variationQty * halfMultiplier * itemQty;
