@@ -31,12 +31,12 @@ const RestaurantHeader: React.FC = () => {
             </div>
             <div className="text-center sm:text-left">
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">ClickPrato</h1>
-              <p className="text-gray-600 mt-1"><b>Cardápio Digital com Inteligência Artificial</b></p>
+              <p className="text-gray-600 mt-1"><b>Cardápio Digital Inteligente que vende por você 🚀</b></p>
               <p className="text-gray-600 mt-1"><b>&nbsp;</b></p>
-              <p className="text-gray-600 mt-1"><b>Especial para Pizzarias</b></p>
-              <p className="text-gray-600 mt-1"><b>Ótimo para Hamburguerias</b></p>
+              <p className="text-gray-600 mt-1"><b>🍕 Perfeito para pizzarias</b></p>
+              <p className="text-gray-600 mt-1"><b>🍔 Ideal para hamburguerias</b></p>
               <p className="text-gray-600 mt-1"><b>&nbsp;</b></p>
-              <p className="text-gray-600 mt-1"><b>Serve todo tipo de Restaurante Delivery</b></p>
+              <p className="text-gray-600 mt-1"><b>🥗 Pronto para qualquer restaurante delivery</b></p>
               <p className="text-gray-600 mt-1"><b>&nbsp;</b></p>              
               <div className="flex items-center justify-center sm:justify-start mt-2">
                 <div className="flex text-yellow-400">
