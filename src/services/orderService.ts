@@ -45,21 +45,21 @@ const getVariationPrice = async (variationId: string): Promise<number> => {
 
 export const createOrder = async (orderData: CreateOrderRequest): Promise<Order> => {
   try {
-    let totalItensSomados = 0;
+    let subtotalRealDoPedido = 0;
 
     const orderItems = await Promise.all(
       orderData.items.map(async (item) => {
         const itemQty = item.quantity ?? 1;
         const isHalfPizza = !!item.isHalfPizza;
 
-        // PREÇO BASE: Se for meio a meio, pega o preço da combinação
+        // 1. Preço Base (Preço da pizza pura)
         const baseUnitPrice = isHalfPizza
           ? (item.combination?.price ?? item.price ?? 0)
           : (item.priceFrom ? 0 : (item.price ?? 0));
 
         let itemSubtotal = baseUnitPrice * itemQty;
 
-        // VARIAÇÕES
+        // 2. Variações
         let processedVariations: any[] = [];
         if (item.selectedVariations && Array.isArray(item.selectedVariations)) {
           for (const group of item.selectedVariations) {
@@ -69,14 +69,13 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
                 const vAny = variation as any;
                 const vId = variation.variationId ?? vAny.id ?? null;
                 let addPrice = variation.additionalPrice;
-                
                 if (addPrice === undefined && vId) {
                   addPrice = await getVariationPrice(String(vId));
                 }
-                
                 const price = addPrice ?? 0;
                 const multiplier = (isHalfPizza && vAny.halfSelection === "whole") ? 2 : 1;
                 
+                // Adiciona o custo da variação ao subtotal do item
                 itemSubtotal += (price * (variation.quantity || 1) * multiplier * itemQty);
 
                 variationsInGroup.push({
@@ -98,13 +97,13 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
           }
         }
 
-        // BORDA: Soma apenas uma vez ao subtotal do item
+        // 3. Borda Recheada (Soma APENAS se existir e apenas ao itemSubtotal)
         const selectedBorder = (item as any).selectedBorder;
         if (selectedBorder && selectedBorder.additionalPrice > 0) {
           itemSubtotal += (selectedBorder.additionalPrice * itemQty);
         }
 
-        totalItensSomados += itemSubtotal;
+        subtotalRealDoPedido += itemSubtotal;
 
         return removeUndefinedDeep({
           menuItemId: item.menuItemId ?? (item as any).id ?? null,
@@ -120,8 +119,8 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
       })
     );
 
-    const finalSubtotal = totalItensSomados;
-    const finalTotal = finalSubtotal + (orderData.frete ?? 0) - (orderData.discount ?? 0);
+    // RECALCULO TOTAL: Ignora o que veio do front para evitar erros de soma dupla
+    const finalTotal = subtotalRealDoPedido + (orderData.frete ?? 0) - (orderData.discount ?? 0);
 
     const orderToSave = removeUndefinedDeep({
       customerName: orderData.customerName,
@@ -131,7 +130,7 @@ export const createOrder = async (orderData: CreateOrderRequest): Promise<Order>
       observations: orderData.observations ?? "",
       items: orderItems,
       status: orderData.status ?? "pending",
-      subtotal: finalSubtotal,
+      subtotal: subtotalRealDoPedido,
       frete: orderData.frete ?? 0,
       total: finalTotal,
       discount: orderData.discount ?? 0,
