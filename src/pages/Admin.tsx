@@ -186,7 +186,7 @@ const Admin = () => {
               </h3>
             </div>
             <p className="text-yellow-700 mb-3 text-xs sm:text-sm leading-relaxed">
-              Comece aqui a criar seu cardápio. Sugestão -> Crie primeiro as Categorias
+              Comece aqui a criar seu cardápio. Sugestão : Crie primeiro as Categorias
             </p>
             <p className="text-yellow-600 text-xs leading-relaxed">
               As "Bordas" só serão adicionadas ao item se o item for alterado de "Padrão" para "Pizza"
