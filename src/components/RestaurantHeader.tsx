@@ -30,11 +30,11 @@ const RestaurantHeader: React.FC = () => {
               />
             </div>
             <div className="text-center sm:text-left">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Oliveira Pizzaria</h1>
-              <p className="text-gray-600 mt-1"><b>Rua Nina Zanoto, 646</b></p>
-              <p className="text-gray-600 mt-1"><b>Jd. Las Vegas - Santo André</b></p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">ClickPrato</h1>
+              <p className="text-gray-600 mt-1"><b>Bairro Boa Vista</b></p>
+              <p className="text-gray-600 mt-1"><b>São Caetano do Sul</b></p>
               <p className="text-gray-600 mt-1"><b>&nbsp;</b></p>
-              <p className="text-gray-600 mt-1">Fotos Ilustrativas Geradas Por Inteligência Artificial</p>
+              <p className="text-gray-600 mt-1">Cardápio Digital com Inteligência Artificial</p>
               <p className="text-gray-600 mt-1"><b>&nbsp;</b></p>              
               <div className="flex items-center justify-center sm:justify-start mt-2">
                 <div className="flex text-yellow-400">
