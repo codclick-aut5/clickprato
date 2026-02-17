@@ -6,7 +6,7 @@ const RestaurantHeader: React.FC = () => {
     <div className="relative">
       <div className="h-48 sm:h-64 w-full bg-gradient-to-l from-brand-300 to-brand-600 overflow-hidden">
         <img
-          src="https://jjvtjuemmkmwkoxfzyng.supabase.co/storage/v1/object/public/imagens-cardapio/clickprato.png"
+          src="https://jjvtjuemmkmwkoxfzyng.supabase.co/storage/v1/object/public/imagens-cardapio/clickprato_bg.png"
           alt="ClickPrato"
           className="w-full h-full object-cover opacity-100"
           onError={(e) => {
