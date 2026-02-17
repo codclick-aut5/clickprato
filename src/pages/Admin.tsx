@@ -186,11 +186,10 @@ const Admin = () => {
               </h3>
             </div>
             <p className="text-yellow-700 mb-3 text-xs sm:text-sm leading-relaxed">
-              Parece que as coleções do Firebase estão vazias ou foram excluídas. 
-              Use o botão "Recriar Coleções Firebase" acima para restaurar todos os dados iniciais.
+              Comece aqui a criar seu cardápio. Sugestão -> Crie primeiro as Categorias
             </p>
             <p className="text-yellow-600 text-xs leading-relaxed">
-              Isso irá criar: categorias, itens do menu, variações e grupos de variações.
+              As "Bordas" só serão adicionadas ao item se o item for alterado de "Padrão" para "Pizza"
             </p>
           </div>
         )}
