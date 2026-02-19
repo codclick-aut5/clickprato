@@ -236,7 +236,7 @@ const sendOrderStatusWebhook = async (orderData: Order & { cancellationReason?: 
 
     console.log("📦 Enviando payload do pedido para webhook n8n:", payload);
 
-    const response = await fetch("https://n8n-n8n-start.yh11mi.easypanel.host/webhook/status_pedido_aut5", {
+    const response = await fetch("https://n8n-n8n-start.yh11mi.easypanel.host/webhook/status_pedido", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -440,11 +440,15 @@ const sendOrderStatusWebhook = async (orderData: Order & { cancellationReason?: 
             )}
             
             {/* Frete */}
-            {order.frete && order.frete > 0 && (
+            {order.frete !== undefined && order.frete !== null && order.frete === 0 ? (
+              <p className="text-sm text-green-600">
+                Frete: 🚚 Grátis!
+              </p>
+            ) : order.frete && order.frete > 0 ? (
               <p className="text-sm text-blue-600">
                 Frete: + R$ {order.frete.toFixed(2)}
               </p>
-            )}
+            ) : null}
             
             <p className="font-semibold text-lg">Total: R$ {order.total.toFixed(2)}</p>
           </div>
